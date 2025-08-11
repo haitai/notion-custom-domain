@@ -123,7 +123,7 @@ const customScript = () => {
 };
 
 const customStyle = `
-  .notion-topbar > div > div:nth-last-child(1), .notion-topbar > div > div:nth-last-child(2),.notion-selectable-container > div > div > div:nth-of-type(1)
+  .notion-topbar > div > div:nth-last-child(1), .notion-topbar > div > div:nth-last-child(2),
  { 
     display:none !important; 
   }
