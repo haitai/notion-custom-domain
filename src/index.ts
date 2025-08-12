@@ -123,7 +123,7 @@ const customScript = () => {
 };
 
 const customStyle = `
-  .notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(1),.notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(2), div.notion-topbar-mobile > div:nth-last-child(1), .notion-selectable-container > div > div:nth-of-type(4) > div:nth-of-type(1)
+  .notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(1),.notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(2), div.notion-topbar-mobile > div:nth-last-child(1) > div:first-child,div[role="menuitem"]:last-child, .notion-selectable-container > div > div:nth-of-type(4) > div:nth-of-type(1)
  { 
     display:none !important; 
   }
