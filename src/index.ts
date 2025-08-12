@@ -127,7 +127,6 @@ const customStyle = `
  { 
     display:none !important; 
   }
-  div[role="menuitem"]:nth-of-type(1){display:inline-block !important;position:fixed !important;right:0  !important;top:0 !important }
 `;
 
 function getCustomScript() {
