@@ -190,7 +190,17 @@ app.use(
       return headers;
     },
     userResDecorator: (_proxyRes, proxyResData, userReq) => {
-      if (/^\/image[s]?\//.test(userReq.url)) {
+      if (/^\/(image[s]?|api)\//.test(userReq.url)) {
+        return proxyResData;
+      }
+
+      // Skip large files (>500KB) to avoid timeout
+      if (proxyResData.length > 500000) {
+        console.warn(
+          'Skipping large file:',
+          userReq.url,
+          `(${proxyResData.length} bytes)`,
+        );
         return proxyResData;
       }
 
