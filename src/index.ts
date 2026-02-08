@@ -126,6 +126,9 @@ const customStyle = `
   .notion-topbar > div > div:nth-last-child(1), .notion-topbar > div > div:nth-last-child(2) { 
     display:none !important; 
   }
+  .notion-topbar-mobile > div:nth-child(2) > div:nth-child(2) { 
+    display:none !important; 
+  }
 `;
 
 function getCustomScript() {
