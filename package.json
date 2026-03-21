@@ -14,6 +14,7 @@
     "dev": "dotenv -- nodemon --exec 'node --no-warnings=ExperimentalWarning --loader ts-node/esm' src/index.ts",
     "fix": "eslint --ext .ts . --fix && prettier --write --log-level silent \"**/*.{json,md}\" && sort-package-json",
     "format-check": "eslint --ext .ts . && prettier --check --log-level silent \"**/*.{json,md}\" && tsc --noEmit",
+    "monitor:smoke": "node scripts/smoke-monitor.mjs",
     "prepare": "husky",
     "vc:dev": "vercel dev",
     "vc:dev:debug": "vercel dev --debug"

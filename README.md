@@ -66,6 +66,37 @@ You can use environment variables on the Vercel Dashboard. In this case, you can
 `vercel env pull`, `vercel dev`, `vercel deploy` or `vercel deploy --prod` without setting environment variables.
 ![](https://github.com/hosso/notion-custom-domain/assets/19500280/e234a2eb-8ba7-4be0-a1dd-fa58ce0327ab)
 
+## Production Monitoring
+
+This repository includes a scheduled GitHub Actions workflow at `.github/workflows/monitor.yml`.
+It runs every 6 hours and can also be started manually from the Actions tab.
+
+Set the repository variable `SITE_URL` to the deployed custom domain URL you want to monitor, for example:
+
+```text
+https://notion-custom-domain.hosso.co
+```
+
+The monitor checks that the site:
+
+- returns an HTTP success status
+- serves HTML
+- injects the custom location proxy script
+- injects the custom style override
+
+When the check fails, the workflow:
+
+- uploads the HTML, headers, and JSON summary as artifacts
+- opens or updates a GitHub issue titled `Monitoring alert: production smoke test failed`
+
+The investigation steps are documented in [`docs/monitoring.md`](docs/monitoring.md).
+
+You can also run the same check locally:
+
+```sh
+SITE_URL=https://notion-custom-domain.hosso.co yarn monitor:smoke
+```
+
 ## License
 
 [MIT](LICENSE)

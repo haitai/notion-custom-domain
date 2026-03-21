@@ -1,0 +1,108 @@
+name: Monitor production site
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: production-monitor
+  cancel-in-progress: false
+
+jobs:
+  smoke-check:
+    runs-on: ubuntu-latest
+    env:
+      SITE_URL: ${{ vars.SITE_URL }}
+      MONITOR_ARTIFACT_DIR: monitor-artifacts
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate configuration
+        run: |
+          if [ -z "$SITE_URL" ]; then
+            echo "Repository variable SITE_URL is not configured." >&2
+            exit 1
+          fi
+
+      - name: Run smoke monitor
+        id: smoke
+        continue-on-error: true
+        run: node scripts/smoke-monitor.mjs
+
+      - name: Upload monitor artifacts
+        if: steps.smoke.outcome != 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitor-artifacts-${{ github.run_id }}
+          path: monitor-artifacts
+          if-no-files-found: error
+
+      - name: Open or update monitoring issue
+        if: steps.smoke.outcome != 'success'
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SITE_URL: ${{ env.SITE_URL }}
+        with:
+          script: |
+            const title = 'Monitoring alert: production smoke test failed';
+            const body = [
+              'The scheduled smoke test failed.',
+              '',
+              `- Site: ${process.env.SITE_URL}`,
+              `- Workflow run: ${process.env.RUN_URL}`,
+              '- Runbook: docs/monitoring.md',
+              '',
+              'Review the uploaded monitor artifacts for the captured HTML, headers, and summary JSON.',
+            ].join('\n');
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+              per_page: 100,
+            });
+            const existing = issues.find((issue) => issue.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['monitoring'],
+              }).catch(async (error) => {
+                if (error.status === 422) {
+                  await github.rest.issues.create({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    title,
+                    body,
+                  });
+                  return;
+                }
+                throw error;
+              });
+            }
+
+      - name: Fail workflow when monitor fails
+        if: steps.smoke.outcome != 'success'
+        run: exit 1
