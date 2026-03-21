@@ -11,7 +11,25 @@ const {
   VERCEL_GIT_COMMIT_SHA,
 } = process.env;
 
-const assetVersion = VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || 'dev';
+const assetVersion = VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || `${Date.now()}`;
+const LARGE_FILE_SIZE_BYTES = 500000;
+const GOOGLE_ANALYTICS_SOURCES =
+  'https://www.googletagmanager.com https://www.google-analytics.com';
+const CUSTOM_STYLE = `
+  .notion-topbar > div > div:nth-last-child(1), .notion-topbar > div > div:nth-last-child(2) {
+    display:none !important;
+  }
+  .notion-topbar-mobile > div:nth-child(2) > div:nth-child(2) {
+    display:none !important;
+  }
+`;
+const ASSET_URL_PATTERN = /([/"'])((?:\\\/|\/)?_assets\/[^"'?]+\.(?:js|css))(?=["'])/g;
+const FIRST_ASSET_SCRIPT_PATTERN = /<script src="\/_assets\//;
+const LOCATION_HREF_PATTERN = /window\.location\.href(?=[^=]|={2,})/g;
+const ASSET_REQUEST_PATTERN = /^\/_assets\/[^/]*\.js$/;
+const PASSTHROUGH_REQUEST_PATTERN = /^\/(image[s]?|api)\//;
+const PUBLIC_PAGE_DATA_ENDPOINT = '/200/www.notion.so/api/v3/';
+const EXPERIMENT_ENDPOINT = '/200/exp.notion.so/v1/';
 
 const { origin: pageDomain, pathname: pagePath } = new URL(PAGE_URL);
 const [pageId] = path.basename(pagePath).match(/[^-]*$/) || [''];
@@ -75,9 +93,16 @@ const locationProxy = (pageDomain: string, pageId: string) => {
     },
   });
 };
-const ncd = minify(
-  `(${locationProxy.toString()})('${pageDomain}', '${pageId}')`,
-).code;
+
+function minifyExpression(expression: string) {
+  return minify(expression).code;
+}
+
+function getLocationProxyScript() {
+  return minifyExpression(
+    `(${locationProxy.toString()})('${pageDomain}', '${pageId}')`,
+  );
+}
 
 const ga = GA_MEASUREMENT_ID
   ? `<!-- Google tag (gtag.js) -->
@@ -128,27 +153,88 @@ const customScript = () => {
   });
 };
 
-const customStyle = `
-  .notion-topbar > div > div:nth-last-child(1), .notion-topbar > div > div:nth-last-child(2) { 
-    display:none !important; 
-  }
-  .notion-topbar-mobile > div:nth-child(2) > div:nth-child(2) { 
-    display:none !important; 
-  }
-`;
-
 function getCustomScript() {
-  const js = minify(`(${customScript.toString()})()`).code;
+  const js = minifyExpression(`(${customScript.toString()})()`);
   return `<script>${js}</script>`;
 }
 
 function getCustomStyle() {
-  const css = new CleanCSS().minify(customStyle).styles;
+  const css = new CleanCSS().minify(CUSTOM_STYLE).styles;
   return `<style>${css}</style>`;
 }
 
 function getInjectedHeadMarkup() {
-  return `<script>${ncd}</script>${getCustomScript()}${getCustomStyle()}`;
+  return `<script>${getLocationProxyScript()}</script>${getCustomScript()}${getCustomStyle()}`;
+}
+
+function getProxyPath(url: string) {
+  return url.replace(/\/(\?|$)/, `/${pageId}$1`);
+}
+
+function rewriteCookieDomains(cookies: string[], hostname: string) {
+  return cookies.map((cookie) =>
+    cookie.replace(
+      /((?:^|; )Domain=)(?:[^.]+\.)?notion\.site(;|$)/gi,
+      `$1${hostname}$2`,
+    ),
+  );
+}
+
+function addAnalyticsSourcesToCsp(csp: string) {
+  return csp.replace(
+    /(?=(script-src|connect-src) )[^;]*/g,
+    `$& ${GOOGLE_ANALYTICS_SOURCES}`,
+  );
+}
+
+function isPseudoSuccessEndpoint(url: string) {
+  return /^\/200\/?/.test(url);
+}
+
+function handlePseudoSuccessEndpoint(url: string, res: express.Response) {
+  if (url.startsWith(PUBLIC_PAGE_DATA_ENDPOINT)) {
+    res.send('success');
+  } else if (url.startsWith(EXPERIMENT_ENDPOINT)) {
+    res.json({ success: true });
+  } else {
+    res.end();
+  }
+}
+
+function isLargeResponse(buffer: Buffer) {
+  return buffer.length > LARGE_FILE_SIZE_BYTES;
+}
+
+function rewriteRuntimeAsset(data: string) {
+  return data.replace(LOCATION_HREF_PATTERN, 'window.ncd.href()');
+}
+
+function rewriteHtml(data: string) {
+  return data
+    .replace(ASSET_URL_PATTERN, `$1$2?v=${assetVersion}`)
+    // Load our globals before Notion's async bundles to avoid race conditions.
+    .replace(
+      FIRST_ASSET_SCRIPT_PATTERN,
+      `${getInjectedHeadMarkup()}<script src="/_assets/`,
+    )
+    .replace('</body>', `${ga}</body>`);
+}
+
+function rewriteSharedResponseContent(data: string) {
+  return data
+    .replace(
+      /https:\/\/((aif\.notion\.so|widget\.intercom\.io)\/?[^"`]*)/g,
+      `/200/$1`,
+    )
+    .replace(/\w+\.init\({dsn:/, 'return;$&');
+}
+
+function decorateHtmlOrAssetResponse(data: string, requestUrl: string) {
+  const rewritten = ASSET_REQUEST_PATTERN.test(requestUrl)
+    ? rewriteRuntimeAsset(data)
+    : rewriteHtml(data);
+
+  return rewriteSharedResponseContent(rewritten);
 }
 
 const app = express();
@@ -162,53 +248,34 @@ app.use(
       return proxyReqOpts;
     },
     filter: (req, res) => {
-      // Pseudo endpoint returning 200
-      if (/^\/200\/?/.test(req.url)) {
-        if (req.url.startsWith('/200/www.notion.so/api/v3/')) {
-          res.send('success');
-        } else if (req.url.startsWith('/200/exp.notion.so/v1/')) {
-          res.json({ success: true });
-        } else {
-          res.end();
-        }
+      if (isPseudoSuccessEndpoint(req.url)) {
+        handlePseudoSuccessEndpoint(req.url, res);
         return false;
       }
       return true;
     },
     proxyReqPathResolver: (req) => {
-      // Replace '/' with `/${pageId}`
-      return req.url.replace(/\/(\?|$)/, `/${pageId}$1`);
+      return getProxyPath(req.url);
     },
     userResHeaderDecorator: (headers, userReq) => {
       const cookies = headers['set-cookie'];
       if (cookies) {
-        // "Domain=notion.site" -> "Domain=mydomain.com"
-        // "; Domain=notion.site;' -> '; Domain=mydomain.com;"
-        headers['set-cookie'] = cookies.map((cookie) =>
-          cookie.replace(
-            /((?:^|; )Domain=)(?:[^.]+\.)?notion\.site(;|$)/gi,
-            `$1${userReq.hostname}$2`,
-          ),
-        );
+        headers['set-cookie'] = rewriteCookieDomains(cookies, userReq.hostname);
       }
 
       const csp = headers['content-security-policy'] as string;
       if (csp) {
-        headers['content-security-policy'] = csp.replace(
-          /(?=(script-src|connect-src) )[^;]*/g,
-          '$& https://www.googletagmanager.com https://www.google-analytics.com',
-        );
+        headers['content-security-policy'] = addAnalyticsSourcesToCsp(csp);
       }
 
       return headers;
     },
     userResDecorator: (_proxyRes, proxyResData, userReq) => {
-      if (/^\/(image[s]?|api)\//.test(userReq.url)) {
+      if (PASSTHROUGH_REQUEST_PATTERN.test(userReq.url)) {
         return proxyResData;
       }
 
-      // Skip large files (>500KB) to avoid timeout
-      if (proxyResData.length > 500000) {
+      if (isLargeResponse(proxyResData)) {
         console.warn(
           'Skipping large file:',
           userReq.url,
@@ -217,7 +284,7 @@ app.use(
         return proxyResData;
       }
 
-      let data = proxyResData.toString();
+      const data = proxyResData.toString();
 
       // For investigation
       const keywords: string[] = [
@@ -242,38 +309,7 @@ app.use(
         console.log('[DEBUG]', userReq.url, found);
       }
 
-      if (/^\/_assets\/[^/]*\.js$/.test(userReq.url)) {
-        data = data.replace(
-          /window\.location\.href(?=[^=]|={2,})/g,
-          'window.ncd.href()',
-        ); // Exclude 'window.location.href=' but not 'window.location.href=='
-      } else {
-        // Assume HTML
-        data = data
-          .replace(
-            /([/"'])((?:\\\/|\/)?_assets\/[^"'?]+\.(?:js|css))(?=["'])/g,
-            `$1$2?v=${assetVersion}`,
-          )
-          // Load our globals before Notion's async bundles to avoid race conditions.
-          .replace(/<script src="\/_assets\//, `${getInjectedHeadMarkup()}<script src="/_assets/`)
-          .replace(
-            '</head>',
-            '</head>',
-          )
-          .replace('</body>', `${ga}</body>`);
-      }
-
-      data = data
-        // https://aif.notion.so/**      -> /200/aif.notion.so/**
-        // https://widget.intercom.io/** -> /200/widget.intercom.io/**
-        .replace(
-          /https:\/\/((aif\.notion\.so|widget\.intercom\.io)\/?[^"`]*)/g,
-          `/200/$1`,
-        )
-        // Skip Sentry.init()
-        .replace(/\w+\.init\({dsn:/, 'return;$&');
-
-      return data;
+      return decorateHtmlOrAssetResponse(data, userReq.url);
     },
   }),
 );
