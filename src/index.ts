@@ -235,7 +235,7 @@ app.use(
       if (/^\/_assets\/[^/]*\.js$/.test(userReq.url)) {
         data = data.replace(
           /window\.location\.href(?=[^=]|={2,})/g,
-          'ncd.href()',
+          'window.ncd.href()',
         ); // Exclude 'window.location.href=' but not 'window.location.href=='
       } else {
         // Assume HTML
