@@ -8,11 +8,8 @@ import CleanCSS from 'clean-css';
 const {
   PAGE_URL = 'https://notion.notion.site/Notion-Official-83715d7703ee4b8699b5e659a4712dd8',
   GA_MEASUREMENT_ID,
-  VERCEL_GIT_COMMIT_SHA,
 } = process.env;
 
-const assetVersion = VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || `${Date.now()}`;
-const LARGE_FILE_SIZE_BYTES = 500000;
 const GOOGLE_ANALYTICS_SOURCES =
   'https://www.googletagmanager.com https://www.google-analytics.com';
 const CUSTOM_STYLE = `
@@ -23,10 +20,9 @@ const CUSTOM_STYLE = `
     display:none !important;
   }
 `;
-const ASSET_URL_PATTERN = /([/"'])((?:\\\/|\/)?_assets\/[^"'?]+\.(?:js|css))(?=["'])/g;
-const FIRST_ASSET_SCRIPT_PATTERN = /<script src="\/_assets\//;
 const LOCATION_HREF_PATTERN = /window\.location\.href(?=[^=]|={2,})/g;
 const ASSET_REQUEST_PATTERN = /^\/_assets\/[^/]*\.js$/;
+const STATIC_ASSET_PATTERN = /^\/_assets\//;
 const PASSTHROUGH_REQUEST_PATTERN = /^\/(image[s]?|api)\//;
 const PUBLIC_PAGE_DATA_ENDPOINT = '/200/www.notion.so/api/v3/';
 const EXPERIMENT_ENDPOINT = '/200/exp.notion.so/v1/';
@@ -70,28 +66,19 @@ const locationProxy = (pageDomain: string, pageId: string) => {
       return this._myUrl(location.href);
     },
   };
-  // Keep a legacy global reference for bundles that still access `ncd` directly.
-  // This avoids breakage when upstream assets are cached across deployments.
-  Reflect.set(globalThis, 'ncd', window.ncd);
 
-  window.history.pushState = new Proxy(window.history.pushState, {
-    apply: function (target, that, [data, unused, url]) {
-      return Reflect.apply(target, that, [
-        data,
-        unused,
-        window.ncd._yourUrl(url),
-      ]);
-    },
-  });
-  window.history.replaceState = new Proxy(window.history.replaceState, {
-    apply: function (target, that, [data, unused, url]) {
-      return Reflect.apply(target, that, [
-        data,
-        unused,
-        window.ncd._yourUrl(url),
-      ]);
-    },
-  });
+  const proxyHistoryMethod = (method: typeof window.history.pushState) =>
+    new Proxy(method, {
+      apply: function (target, that, [data, unused, url]) {
+        return Reflect.apply(target, that, [
+          data,
+          unused,
+          window.ncd._yourUrl(url),
+        ]);
+      },
+    });
+  window.history.pushState = proxyHistoryMethod(window.history.pushState);
+  window.history.replaceState = proxyHistoryMethod(window.history.replaceState);
 };
 
 function minifyExpression(expression: string) {
@@ -163,9 +150,7 @@ function getCustomStyle() {
   return `<style>${css}</style>`;
 }
 
-function getInjectedHeadMarkup() {
-  return `<script>${getLocationProxyScript()}</script>${getCustomScript()}${getCustomStyle()}`;
-}
+const injectedHeadMarkup = `<script>${getLocationProxyScript()}</script>${getCustomScript()}${getCustomStyle()}`;
 
 function getProxyPath(url: string) {
   return url.replace(/\/(\?|$)/, `/${pageId}$1`);
@@ -201,22 +186,13 @@ function handlePseudoSuccessEndpoint(url: string, res: express.Response) {
   }
 }
 
-function isLargeResponse(buffer: Buffer) {
-  return buffer.length > LARGE_FILE_SIZE_BYTES;
-}
-
 function rewriteRuntimeAsset(data: string) {
   return data.replace(LOCATION_HREF_PATTERN, 'window.ncd.href()');
 }
 
 function rewriteHtml(data: string) {
   return data
-    .replace(ASSET_URL_PATTERN, `$1$2?v=${assetVersion}`)
-    // Load our globals before Notion's async bundles to avoid race conditions.
-    .replace(
-      FIRST_ASSET_SCRIPT_PATTERN,
-      `${getInjectedHeadMarkup()}<script src="/_assets/`,
-    )
+    .replace('</head>', `${injectedHeadMarkup}</head>`)
     .replace('</body>', `${ga}</body>`);
 }
 
@@ -237,7 +213,25 @@ function decorateHtmlOrAssetResponse(data: string, requestUrl: string) {
   return rewriteSharedResponseContent(rewritten);
 }
 
+// Filenames under /_assets/ are content-hashed, so responses are immutable.
+interface CacheEntry {
+  data: Buffer | string;
+  contentType: string;
+}
+const assetCache = new Map<string, CacheEntry>();
+
 const app = express();
+
+app.use((req, res, next) => {
+  const cached = assetCache.get(req.url);
+  if (cached) {
+    res.setHeader('content-type', cached.contentType);
+    res.setHeader('cache-control', 'public, max-age=31536000, immutable');
+    res.send(cached.data);
+    return;
+  }
+  next();
+});
 
 app.use(
   proxy(pageDomain, {
@@ -268,48 +262,38 @@ app.use(
         headers['content-security-policy'] = addAnalyticsSourcesToCsp(csp);
       }
 
-      return headers;
-    },
-    userResDecorator: (_proxyRes, proxyResData, userReq) => {
-      if (PASSTHROUGH_REQUEST_PATTERN.test(userReq.url)) {
-        return proxyResData;
+      if (STATIC_ASSET_PATTERN.test(userReq.url)) {
+        headers['cache-control'] = 'public, max-age=31536000, immutable';
       }
 
-      if (isLargeResponse(proxyResData)) {
-        console.warn(
-          'Skipping large file:',
-          userReq.url,
-          `(${proxyResData.length} bytes)`,
-        );
+      return headers;
+    },
+    userResDecorator: (proxyRes, proxyResData, userReq) => {
+      const contentType = proxyRes.headers['content-type'] ?? '';
+      if (
+        PASSTHROUGH_REQUEST_PATTERN.test(userReq.url) ||
+        !contentType.startsWith('text/') && !contentType.includes('javascript')
+      ) {
+        if (
+          STATIC_ASSET_PATTERN.test(userReq.url) &&
+          proxyRes.statusCode === 200
+        ) {
+          assetCache.set(userReq.url, { data: proxyResData, contentType });
+        }
         return proxyResData;
       }
 
       const data = proxyResData.toString();
+      const result = decorateHtmlOrAssetResponse(data, userReq.url);
 
-      // For investigation
-      const keywords: string[] = [
-        // 'teV1',
-        // 'aif.notion.so',
-        // 'exp.notion.so',
-        // 'msgstore.www.notion.so',
-        // 'primus',
-        // 'widget.intercom.io',
-        // 'ingest.sentry.io',
-        // 'envelope',
-        // 'dsn',
-        // 'splunkcloud.com',
-        // 'statsigapi.net',
-      ];
-      const found = keywords.reduce(
-        (acc: string[], keyword) =>
-          data.includes(keyword) ? [...acc, keyword] : acc,
-        [],
-      );
-      if (found.length > 0) {
-        console.log('[DEBUG]', userReq.url, found);
+      if (
+        STATIC_ASSET_PATTERN.test(userReq.url) &&
+        proxyRes.statusCode === 200
+      ) {
+        assetCache.set(userReq.url, { data: result, contentType });
       }
 
-      return decorateHtmlOrAssetResponse(data, userReq.url);
+      return result;
     },
   }),
 );
