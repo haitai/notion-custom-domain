@@ -147,6 +147,10 @@ function getCustomStyle() {
   return `<style>${css}</style>`;
 }
 
+function getInjectedHeadMarkup() {
+  return `<script>${ncd}</script>${getCustomScript()}${getCustomStyle()}`;
+}
+
 const app = express();
 
 app.use(
@@ -250,9 +254,11 @@ app.use(
             /([/"'])((?:\\\/|\/)?_assets\/[^"'?]+\.(?:js|css))(?=["'])/g,
             `$1$2?v=${assetVersion}`,
           )
+          // Load our globals before Notion's async bundles to avoid race conditions.
+          .replace(/<script src="\/_assets\//, `${getInjectedHeadMarkup()}<script src="/_assets/`)
           .replace(
             '</head>',
-            `<script>${ncd}</script>${getCustomScript()}${getCustomStyle()}</head>`,
+            '</head>',
           )
           .replace('</body>', `${ga}</body>`);
       }
