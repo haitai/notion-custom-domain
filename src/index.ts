@@ -8,7 +8,10 @@ import CleanCSS from 'clean-css';
 const {
   PAGE_URL = 'https://notion.notion.site/Notion-Official-83715d7703ee4b8699b5e659a4712dd8',
   GA_MEASUREMENT_ID,
+  VERCEL_GIT_COMMIT_SHA,
 } = process.env;
+
+const assetVersion = VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || 'dev';
 
 const { origin: pageDomain, pathname: pagePath } = new URL(PAGE_URL);
 const [pageId] = path.basename(pagePath).match(/[^-]*$/) || [''];
@@ -240,6 +243,10 @@ app.use(
       } else {
         // Assume HTML
         data = data
+          .replace(
+            /([/"'])((?:\\\/|\/)?_assets\/[^"'?]+\.(?:js|css))(?=["'])/g,
+            `$1$2?v=${assetVersion}`,
+          )
           .replace(
             '</head>',
             `<script>${ncd}</script>${getCustomScript()}${getCustomStyle()}</head>`,
