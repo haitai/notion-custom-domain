@@ -52,6 +52,9 @@ const locationProxy = (pageDomain: string, pageId: string) => {
       return this._myUrl(location.href);
     },
   };
+  // Keep a legacy global reference for bundles that still access `ncd` directly.
+  // This avoids breakage when upstream assets are cached across deployments.
+  Reflect.set(globalThis, 'ncd', window.ncd);
 
   window.history.pushState = new Proxy(window.history.pushState, {
     apply: function (target, that, [data, unused, url]) {
