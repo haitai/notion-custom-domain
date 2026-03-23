@@ -13,9 +13,9 @@ const {
 const GOOGLE_ANALYTICS_SOURCES =
   'https://www.googletagmanager.com https://www.google-analytics.com';
 const CUSTOM_STYLE = `
-  .notion-topbar > div > div:nth-last-child(1), .notion-topbar > div > div:nth-last-child(2) {
-    display:none !important;
-  }
+ // .notion-topbar > div > div:nth-last-child(1), .notion-topbar > div > div:nth-last-child(2) {
+ //   display:none !important;
+ // }
   .notion-topbar-mobile > div:nth-child(2) > div:nth-child(2) {
     display:none !important;
   }
