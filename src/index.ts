@@ -27,8 +27,10 @@ const LOCATION_HREF_PATTERN = /window\.location\.href(?=[^=]|={2,})/g;
 const ASSET_REQUEST_PATTERN = /^\/_assets\/[^/]*\.js$/;
 const STATIC_ASSET_PATTERN = /^\/_assets\//;
 const PASSTHROUGH_REQUEST_PATTERN = /^\/(image[s]?|api)\//;
-const PUBLIC_PAGE_DATA_ENDPOINT = '/200/www.notion.so/api/v3/';
-const EXPERIMENT_ENDPOINT = '/200/exp.notion.so/v1/';
+// www.notion.so/api/v3/
+const PUBLIC_PAGE_DATA_ENDPOINT = '/200/api.notion.com/v3/';
+// exp.notion.so/v1/
+const EXPERIMENT_ENDPOINT = '/200/api.notion.com/v1/';
 
 const { origin: pageDomain, pathname: pagePath } = new URL(PAGE_URL);
 const [pageId] = path.basename(pagePath).match(/[^-]*$/) || [''];
