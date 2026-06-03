@@ -22,6 +22,9 @@ const CUSTOM_STYLE = `
   .notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(1),.notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(2), div.notion-topbar-mobile > div:nth-last-child(1) > div:first-child,div[role="menuitem"]:last-child, .notion-selectable-container > div > div:nth-of-type(4) > div:nth-of-type(1) { 
       display:none !important;
   }
+  .notion-collection-view-body > div > div {
+  max-width:100% !important;
+  }
 `;
 const LOCATION_HREF_PATTERN = /window\.location\.href(?=[^=]|={2,})/g;
 const ASSET_REQUEST_PATTERN = /^\/_assets\/[^/]*\.js$/;
