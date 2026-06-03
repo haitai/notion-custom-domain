@@ -22,6 +22,12 @@ const CUSTOM_STYLE = `
   .notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(1),.notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(2), div.notion-topbar-mobile > div:nth-last-child(1) > div:first-child,div[role="menuitem"]:last-child, .notion-selectable-container > div > div:nth-of-type(4) > div:nth-of-type(1) { 
       display:none !important;
   }
+  .notion-selectable-container > div > div:nth-child(3) > div:nth-child(2) {
+  padding-inline-start:14px !important;
+  }
+  .notion-collection-view-body > div {
+  padding-inline:20px !important;
+  }
   .notion-collection-view-body > div > div {
   max-width:100% !important;
   }
