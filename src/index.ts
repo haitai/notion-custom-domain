@@ -23,7 +23,7 @@ const CUSTOM_STYLE = `
       display:none !important;
   }
   .notion-selectable-container > div > div:nth-child(3) > div:nth-child(2) {
-  display:none !important;
+  padding-inline-start:14px !important;
   }
   .notion-collection-view-body > div {
   padding-inline:20px !important;
