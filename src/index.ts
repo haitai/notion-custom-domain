@@ -16,13 +16,7 @@ const CUSTOM_STYLE = `
  // .notion-topbar > div > div:nth-last-child(1), .notion-topbar > div > div:nth-last-child(2) {
  //   display:none !important;
  // }
-  .notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(1),
-  .notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(2), 
-  .notion-topbar-mobile > div:nth-last-child(1) > div:first-child, 
-  .notion-topbar-mobile > div:nth-child(2) > div:nth-child(2), 
-  div[role="menuitem"]:last-child, 
-  .notion-selectable-container > div > div:nth-child(3) > div:nth-child(2), 
-  .notion-selectable-container > div > div:nth-of-type(4) > div:nth-of-type(1) { 
+  .notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(1), .notion-topbar > div > div:nth-last-child(1) > div > div:nth-last-child(2), .notion-topbar-mobile > div:nth-last-child(1) > div:first-child, .notion-topbar-mobile > div:nth-child(2) > div:nth-child(2), div[role="menuitem"]:last-child, .notion-selectable-container > div > div:nth-child(3) > div:nth-child(2), .notion-selectable-container > div > div:nth-of-type(4) > div:nth-of-type(1) { 
       display:none !important;
   }
   .notion-collection-view-body > div {
