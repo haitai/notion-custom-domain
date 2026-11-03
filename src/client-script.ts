@@ -23,6 +23,9 @@ const CUSTOM_STYLE = `
   [contenteditable] {
     font-weight: 400 !important;
   }
+  .layout {
+    --content-width: none !important;
+  }
 `;
 
 declare global {
